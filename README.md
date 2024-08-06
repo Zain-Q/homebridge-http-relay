@@ -1,5 +1,7 @@
 # homebridge-http-relay
 
+Run "npm install" in the plugin directory.
+
 Configuration example;
 
 {

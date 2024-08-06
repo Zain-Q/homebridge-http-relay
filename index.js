@@ -1,70 +1,81 @@
 const axios = require('axios');
 const fs = require('fs');
+const path = require('path');
 
-module.exports = (api) => {
-  api.registerAccessory('switchPlugin', switchAccessory);
+let Service, Characteristic;
+
+module.exports = (homebridge) => {
+  Service = homebridge.hap.Service;
+  Characteristic = homebridge.hap.Characteristic;
+  homebridge.registerAccessory('homebridge-http-relay', 'HttpRelay', HttpRelay);
 };
 
-class switchAccessory {
-
-  constructor(log, config, api) {
+class HttpRelay {
+  constructor(log, config) {
     this.log = log;
-    this.config = config;
-    this.switchOnUrl = config.switchOnUrl;
-    this.switchOffUrl = config.switchOffUrl;
-    this.stateFile = config.stateFile;
-    this.api = api;
-
-    this.Service = this.api.hap.Service;
-    this.Characteristic = this.api.hap.Characteristic;
-
-    // extract name from config
     this.name = config.name;
+    this.relayOnUrl = config.relayOnUrl;
+    this.relayOffUrl = config.relayOffUrl;
+    this.stateFile = config.stateFile || path.join(__dirname, `${this.name}_state.json`);
+    this.type = config.type || 'switch'; // default type is switch
 
-    // create a new switch service
-    this.service = new this.Service.switch(this.name);
+    // Create the appropriate service based on the type
+    switch (this.type.toLowerCase()) {
+      case 'light':
+        this.service = new Service.Lightbulb(this.name);
+        break;
+      case 'fan':
+        this.service = new Service.Fan(this.name);
+        break;
+      case 'switch':
+      default:
+        this.service = new Service.Switch(this.name);
+        break;
+    }
 
-    // create handlers for required characteristics
-    this.service.getCharacteristic(this.Characteristic.On)
-      .onGet(this.handleOnGet.bind(this))
-      .onSet(this.handleOnSet.bind(this));
+    // Create handlers for required characteristics
+    this.service.getCharacteristic(Characteristic.On)
+      .on('get', this.handleOnGet.bind(this))
+      .on('set', this.handleOnSet.bind(this));
 
-    // start polling the file for updates
+    // Start polling the file for updates
     this.startPolling();
   }
 
   /**
    * Handle requests to get the current value of the "On" characteristic
    */
-  async handleOnGet() {
+  handleOnGet(callback) {
     this.log.debug('Triggered GET On');
 
     // Read the current state from the file
     const currentState = fs.existsSync(this.stateFile) ? fs.readFileSync(this.stateFile, 'utf8') : '0';
     const currentValue = currentState === '1';
 
-    return currentValue;
+    callback(null, currentValue);
   }
 
   /**
    * Handle requests to set the "On" characteristic
    */
-  async handleOnSet(value) {
+  async handleOnSet(value, callback) {
     this.log.debug('Triggered SET On: ' + value);
 
     try {
       if (value) {
-        await axios.get(this.switchOnUrl);
-        this.log.debug('Switched on successfully.');
+        await axios.get(this.relayOnUrl);
+        this.log.debug('Relayed on successfully.');
       } else {
-        await axios.get(this.switchOffUrl);
-        this.log.debug('Switched off successfully.');
+        await axios.get(this.relayOffUrl);
+        this.log.debug('Relayed off successfully.');
       }
 
       // Save the current state to the file
       fs.writeFileSync(this.stateFile, value ? '1' : '0');
+      callback(null);
     } catch (error) {
-      this.log.error('Error setting light state:', error);
+      this.log.error('Error setting relay state:', error);
+      callback(error);
     }
   }
 
@@ -79,7 +90,7 @@ class switchAccessory {
       const currentValue = currentState === '1';
 
       // Update the characteristic if the state has changed
-      this.service.getCharacteristic(this.Characteristic.On).updateValue(currentValue);
+      this.service.getCharacteristic(Characteristic.On).updateValue(currentValue);
     }, interval);
   }
 
