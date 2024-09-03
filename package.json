@@ -1,6 +1,6 @@
 {
   "name": "homebridge-http-relay",
-  "version": "0.1.0",
+  "version": "v1.0.0",
   "description": "Plugin to control the relay with http get calls.",
   "keywords": [
     "homebridge-plugin",
